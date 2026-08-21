@@ -36,7 +36,7 @@ public class MainActivity extends AppCompatActivity implements AudioNetworkManag
             "user=pepe\n" +
             "pass=23rc2rc\n" +
             "audio.rate=48000\n" +
-            "audio.max_latency_ms=100\n";
+            "audio.max_latency_ms=200\n";
 
     private static final String DEFAULT_CONFIG_2 =
             "server.ip=192.168.0.2\n" +
@@ -44,7 +44,7 @@ public class MainActivity extends AppCompatActivity implements AudioNetworkManag
             "user=pepe\n" +
             "pass=23rc2rc\n" +
             "audio.rate=48000\n" +
-            "audio.max_latency_ms=100\n";
+            "audio.max_latency_ms=200\n";
 
     private View layoutConfig;
     private View layoutTalk;
@@ -64,7 +64,7 @@ public class MainActivity extends AppCompatActivity implements AudioNetworkManag
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        audioManager = new AudioNetworkManager(this);
+        audioManager = new AudioNetworkManager(this, this);
 
         initViews();
         loadSavedConfig();
@@ -145,9 +145,11 @@ public class MainActivity extends AppCompatActivity implements AudioNetworkManag
         String saved2 = prefs.getString(KEY_CONFIG_2, DEFAULT_CONFIG_2);
         int activeTab = prefs.getInt(KEY_ACTIVE_TAB, 0);
 
-        // Actualizar rate a 48000 si venía con 16000
-        saved1 = saved1.replace("audio.rate=16000", "audio.rate=48000");
-        saved2 = saved2.replace("audio.rate=16000", "audio.rate=48000");
+        // Actualizar rate a 48000 si venía con 16000 y latencia a 200 si venía con 100
+        saved1 = saved1.replace("audio.rate=16000", "audio.rate=48000")
+                .replace("audio.max_latency_ms=100", "audio.max_latency_ms=200");
+        saved2 = saved2.replace("audio.rate=16000", "audio.rate=48000")
+                .replace("audio.max_latency_ms=100", "audio.max_latency_ms=200");
 
         editConfig1.setText(saved1);
         editConfig2.setText(saved2);
