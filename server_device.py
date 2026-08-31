@@ -5,6 +5,7 @@ Incluye timestamp (ms epoch) en cada paquete de audio.
 """
 
 import os
+import select
 import socket
 import struct
 import subprocess
@@ -172,32 +173,70 @@ class UdpAudioServer:
 
     def speaker_worker(self):
         chunk_size = 960  # 10ms a 48kHz mono 16-bit
+        period = 0.010     # cadencia fija: un paquete (~10ms) por tick
+        acc_target = chunk_size * 2  # mantener muy poco backlog (<=20ms)
+        acc = bytearray()  # reensambla el audio de parec en bloques uniformes
+        next_tick = time.time()
+        bytes_read = 0
+        pkts_sent = 0
+        last_stat = time.time()
         while self.running:
-            if not self.parec_proc or not self.parec_proc.stdout:
-                time.sleep(0.001)
-                continue
-
-            data = self.parec_proc.stdout.read(chunk_size)
-            if not data:
-                time.sleep(0.001)
-                continue
-
-            if data == b'\x00' * len(data):
-                continue
+            # Lectura NO bloqueante: no colgar el hilo si parec no entrega.
+            if self.parec_proc and self.parec_proc.stdout and self.parec_proc.stdout.fileno() >= 0:
+                try:
+                    r, _, _ = select.select([self.parec_proc.stdout], [], [], 0)
+                    while r:
+                        piece = os.read(self.parec_proc.stdout.fileno(), 8192)
+                        if not piece:
+                            break
+                        bytes_read += len(piece)
+                        acc += piece
+                        r, _, _ = select.select([self.parec_proc.stdout], [], [], 0)
+                except Exception:
+                    pass
 
             with self.lock:
                 addr = self.client_addr
                 active = (time.time() - self.last_client_seen < 4.0)
 
-            if addr and active and self.sock:
+            # Drenar a cadencia; si hay backlog acumulado, enviar 2/tick para
+            # recuperarse antes del tiempo real y volver a ~acc_target.
+            # Se envía TODO (incluido silencio) para no acumular datos no enviados.
+            max_per_tick = 2 if len(acc) > acc_target else 1
+            sent = 0
+            while (sent < max_per_tick and len(acc) >= chunk_size
+                   and addr and active and self.sock):
+                data = bytes(acc[:chunk_size])
+                del acc[:chunk_size]
                 self.send_seq = (self.send_seq + 1) & 0x7FFFFFFF
                 t_send = current_time_ms()
-                # Formato AUDIO: [1B TYPE][4B SEQ][8B TIMESTAMP_MS][4B LEN][PAYLOAD]
                 hdr = struct.pack(">BIQI", TYPE_AUDIO, self.send_seq, t_send, len(data))
                 try:
                     self.sock.sendto(hdr + data, addr)
+                    pkts_sent += 1
                 except Exception:
                     pass
+                sent += 1
+
+            # Cadencia libre de deriva: fijamos el tick al siguiente múltiplo de
+            # `period`, por lo que a largo plazo enviamos exactamente 100/s,
+            # en lugar de `sleep(period - elapsed)` que se atrasa un 0.7% y
+            # acumula backlog indefinidamente.
+            next_tick = next_tick + period
+            dt = next_tick - time.time()
+            if dt > 0:
+                time.sleep(dt)
+            else:
+                next_tick = time.time() + period  # nos hemos quedado atrás; resincronizar
+
+            now = time.time()
+            if now - last_stat >= 5.0:
+                dur = now - last_stat
+                last_stat = now
+                log(f"[SRV] acc={len(acc)}B ({len(acc)/192.0:.0f}ms) "
+                    f"read={bytes_read/dur:.0f}B/s pkts={pkts_sent} rate={pkts_sent/dur:.1f}/s")
+                bytes_read = 0
+                pkts_sent = 0
 
     def run(self):
         setup_virtual_audio_devices()

@@ -103,6 +103,7 @@ public class MainActivity extends AppCompatActivity implements AudioNetworkManag
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        setTitle(getString(R.string.app_name) + " (v" + BuildConfig.VERSION_NAME + ")");
 
         initViews();
         loadSavedConfig();

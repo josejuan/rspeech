@@ -56,7 +56,7 @@ public class AudioService extends Service {
     private Notification buildNotification() {
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-                .setContentTitle(getString(R.string.app_name))
+                .setContentTitle(getString(R.string.app_name) + " (v" + BuildConfig.VERSION_NAME + ")")
                 .setContentText("RSpeech en segundo plano (micrófono + audio)")
                 .setOngoing(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
