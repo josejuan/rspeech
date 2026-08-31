@@ -2,10 +2,15 @@ package com.example.rspeech;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.os.IBinder;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Button;
@@ -58,17 +63,57 @@ public class MainActivity extends AppCompatActivity implements AudioNetworkManag
 
     private AudioNetworkManager audioManager;
     private boolean isPushPressed = false;
+    private boolean serviceBound = false;
+
+    private String pendingIp;
+    private int pendingPort;
+    private String pendingUser;
+    private String pendingPass;
+    private int pendingSampleRate;
+    private long pendingMaxLatencyMs;
+    private boolean hasPendingConfig = false;
+
+    private final ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder binder) {
+            AudioService.AudioBinder audioBinder = (AudioService.AudioBinder) binder;
+            audioManager = audioBinder.getManager();
+            audioManager.setListener(MainActivity.this);
+            serviceBound = true;
+            applyPendingConfigIfAny();
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            serviceBound = false;
+            audioManager = null;
+        }
+    };
+
+    private void applyPendingConfigIfAny() {
+        if (hasPendingConfig && audioManager != null) {
+            audioManager.updateConfig(pendingIp, pendingPort, pendingUser, pendingPass,
+                    pendingSampleRate, pendingMaxLatencyMs);
+            audioManager.start();
+            hasPendingConfig = false;
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        audioManager = new AudioNetworkManager(this, this);
-
         initViews();
         loadSavedConfig();
         checkPermissions();
+
+        bindToService();
+    }
+
+    private void bindToService() {
+        Intent intent = new Intent(this, AudioService.class);
+        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
     }
 
     private void initViews() {
@@ -208,11 +253,25 @@ public class MainActivity extends AppCompatActivity implements AudioNetworkManag
         layoutConfig.setVisibility(View.GONE);
         layoutTalk.setVisibility(View.VISIBLE);
 
-        audioManager.start();
+        ContextCompat.startForegroundService(this, new Intent(this, AudioService.class));
+        if (!serviceBound) {
+            bindToService();
+        }
+
+        pendingIp = ip;
+        pendingPort = port;
+        pendingUser = user;
+        pendingPass = pass;
+        pendingSampleRate = sampleRate;
+        pendingMaxLatencyMs = maxLatencyMs;
+        hasPendingConfig = true;
+        applyPendingConfigIfAny();
     }
 
     private void showConfigScreen() {
-        audioManager.stop();
+        if (audioManager != null) {
+            audioManager.stop();
+        }
         switchMic.setChecked(false);
         isPushPressed = false;
 
@@ -262,9 +321,11 @@ public class MainActivity extends AppCompatActivity implements AudioNetworkManag
 
     @Override
     protected void onDestroy() {
-        super.onDestroy();
-        if (audioManager != null) {
-            audioManager.stop();
+        if (serviceBound) {
+            unbindService(serviceConnection);
+            serviceBound = false;
+            audioManager = null;
         }
+        super.onDestroy();
     }
 }

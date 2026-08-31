@@ -42,7 +42,7 @@ public class AudioNetworkManager {
     }
 
     private final Context context;
-    private final Listener listener;
+    private Listener listener;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private String serverIp = "192.168.0.3";
@@ -92,6 +92,10 @@ public class AudioNetworkManager {
         this.context = context.getApplicationContext();
         this.listener = listener;
         initWakeAndWifiLocks();
+    }
+
+    public void setListener(Listener listener) {
+        this.listener = listener;
     }
 
     private void initWakeAndWifiLocks() {
@@ -203,7 +207,7 @@ public class AudioNetworkManager {
     public void setMicActive(boolean active) {
         boolean prev = isMicActive.getAndSet(active);
         if (prev != active) {
-            mainHandler.post(() -> listener.onMicStateChanged(active));
+            mainHandler.post(() -> { if (listener != null) listener.onMicStateChanged(active); });
             if (active) {
                 startRecording();
             } else {
@@ -213,7 +217,7 @@ public class AudioNetworkManager {
     }
 
     private void notifyStatus(boolean connected, String msg) {
-        mainHandler.post(() -> listener.onConnectionStatus(connected, msg));
+        mainHandler.post(() -> { if (listener != null) listener.onConnectionStatus(connected, msg); });
     }
 
     private void timeSyncAndHeartbeatLoop() {
